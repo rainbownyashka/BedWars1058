@@ -30,6 +30,7 @@ import com.andrei1058.bedwars.arena.SetupSession;
 import com.andrei1058.bedwars.commands.bedwars.subcmds.regular.*;
 import com.andrei1058.bedwars.commands.bedwars.subcmds.sensitive.Level;
 import com.andrei1058.bedwars.commands.bedwars.subcmds.sensitive.Reload;
+import com.andrei1058.bedwars.commands.bedwars.subcmds.sensitive.ScoreboardDebug;
 import com.andrei1058.bedwars.commands.bedwars.subcmds.sensitive.setup.*;
 import com.andrei1058.bedwars.support.citizens.JoinNPC;
 import net.md_5.bungee.api.chat.ClickEvent;
@@ -87,6 +88,7 @@ public class MainCommand extends BukkitCommand implements ParentCommand {
         new com.andrei1058.bedwars.commands.bedwars.subcmds.sensitive.Build(this, "build"); //priority 9
         new Level(this, "level");
         new Reload(this, "reload"); //priority 11
+        new ScoreboardDebug(this, "scoreboarddebug"); //priority 12
         new CmdList(this, "cmds"); //priority 20
 
         /* Arena setup commands (in world) */
