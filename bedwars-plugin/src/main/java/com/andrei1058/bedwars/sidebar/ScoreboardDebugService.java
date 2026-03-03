@@ -117,7 +117,7 @@ public final class ScoreboardDebugService {
         }
 
         try {
-            JsonObject baseline = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+            JsonObject baseline = new JsonParser().parse(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
             List<String> diffs = new ArrayList<>();
 
             String baselineState = getString(baseline, "stateKey");
@@ -277,16 +277,16 @@ public final class ScoreboardDebugService {
             root.addProperty("stateKey", stateKey);
 
             JsonArray titleRawArray = new JsonArray();
-            for (String value : titleRaw) titleRawArray.add(value);
+            for (String value : titleRaw) titleRawArray.add(new JsonPrimitive(value));
             root.add("titleRaw", titleRawArray);
             root.addProperty("titleRendered", titleRendered);
 
             JsonArray linesRawArray = new JsonArray();
-            for (String value : linesRaw) linesRawArray.add(value);
+            for (String value : linesRaw) linesRawArray.add(new JsonPrimitive(value));
             root.add("linesRaw", linesRawArray);
 
             JsonArray linesNormalizedArray = new JsonArray();
-            for (String value : linesNormalized) linesNormalizedArray.add(value);
+            for (String value : linesNormalized) linesNormalizedArray.add(new JsonPrimitive(value));
             root.add("linesNormalized", linesNormalizedArray);
 
             JsonObject placeholders = new JsonObject();
