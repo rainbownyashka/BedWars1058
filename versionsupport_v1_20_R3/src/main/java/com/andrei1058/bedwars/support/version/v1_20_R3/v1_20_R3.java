@@ -16,7 +16,6 @@ import com.andrei1058.bedwars.support.version.v1_20_R3.despawnable.DespawnableTy
 import com.mojang.datafixers.util.Pair;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
-import net.minecraft.core.particles.ParticleParamRedstone;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
@@ -53,7 +52,6 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -263,7 +261,7 @@ public class v1_20_R3 extends VersionSupport {
         if (null == tag) {
             throw new RuntimeException("Provided item has no Tag");
         }
-        return tag.k("generic.attackDamage");
+        return tag.k("generic.attack_damage");
     }
 
     private static ArmorStand createArmorStand(String name, Location loc) {
@@ -661,22 +659,18 @@ public class v1_20_R3 extends VersionSupport {
     @Override
     public void playRedStoneDot(@NotNull Player player) {
         Color color = Color.RED;
-        PacketPlayOutWorldParticles particlePacket = new PacketPlayOutWorldParticles(
-                new ParticleParamRedstone(
-                        new Vector3f((float) color.getRed(),
-                                (float) color.getGreen(),
-                                (float) color.getBlue()), (float) 1
-                ),
-                true,
+        Particle.DustOptions dust = new Particle.DustOptions(color, 1.0F);
+        player.getWorld().spawnParticle(
+                Particle.DUST,
                 player.getLocation().getX(),
                 player.getLocation().getY() + 2.6,
                 player.getLocation().getZ(),
-                0, 0, 0, 0, 0
+                1,
+                0, 0, 0,
+                0,
+                dust,
+                true
         );
-        for (Player inWorld : player.getWorld().getPlayers()) {
-            if (inWorld.equals(player)) continue;
-            this.sendPacket(inWorld, particlePacket);
-        }
     }
 
     @Override
