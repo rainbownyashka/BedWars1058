@@ -2,6 +2,7 @@ package com.andrei1058.spigot.sidebar;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
@@ -15,6 +16,7 @@ public final class SidebarManager {
     private static final Logger LOG = Bukkit.getLogger();
     private static SidebarManager instance;
     private static boolean warnedHeaderFooterUnsupported = false;
+    private static boolean warnedPapiParsingFailure = false;
 
     private SidebarManager() {
     }
@@ -38,8 +40,8 @@ public final class SidebarManager {
     }
 
     public void sendHeaderFooter(Player player, TabHeaderFooter headerFooter) {
-        String header = renderMultiline(headerFooter.getHeaderLines(), headerFooter.getPlaceholders());
-        String footer = renderMultiline(headerFooter.getFooterLines(), headerFooter.getPlaceholders());
+        String header = renderMultiline(player, headerFooter.getHeaderLines(), headerFooter.getPlaceholders());
+        String footer = renderMultiline(player, headerFooter.getFooterLines(), headerFooter.getPlaceholders());
 
         try {
             Method m = Player.class.getMethod("setPlayerListHeaderFooter", String.class, String.class);
@@ -71,16 +73,16 @@ public final class SidebarManager {
         }
     }
 
-    private static String renderMultiline(List<SidebarLine> lines, ConcurrentLinkedQueue<PlaceholderProvider> placeholders) {
+    private static String renderMultiline(Player player, List<SidebarLine> lines, ConcurrentLinkedQueue<PlaceholderProvider> placeholders) {
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < lines.size(); i++) {
             if (i > 0) out.append('\n');
-            out.append(renderLine(lines.get(i), placeholders));
+            out.append(renderLine(player, lines.get(i), placeholders));
         }
         return out.toString();
     }
 
-    private static String renderLine(SidebarLine line, Collection<PlaceholderProvider> placeholders) {
+    private static String renderLine(Player player, SidebarLine line, Collection<PlaceholderProvider> placeholders) {
         String out = line.getLine();
         for (PlaceholderProvider placeholder : placeholders) {
             String value;
@@ -91,12 +93,39 @@ public final class SidebarManager {
                 value = "<error>";
             }
             if (value == null) {
-                LOG.warning("[BedWars][SidebarFallback] Header/footer placeholder returned null: " + placeholder.getPlaceholder());
-                value = "<null>";
+                if ("{playerName}".equalsIgnoreCase(placeholder.getPlaceholder())) {
+                    value = player.getName();
+                } else {
+                    value = "";
+                }
             }
             out = out.replace(placeholder.getPlaceholder(), value);
         }
-        return out;
+        return parseWithPlaceholderApi(player, out);
+    }
+
+    private static String parseWithPlaceholderApi(Player player, String input) {
+        Plugin papi = Bukkit.getPluginManager().getPlugin("PlaceholderAPI");
+        if (papi == null || !papi.isEnabled()) {
+            return input;
+        }
+
+        String output = input;
+        try {
+            Class<?> placeholderApiClass = Class.forName("me.clip.placeholderapi.PlaceholderAPI");
+
+            // Supports both %placeholder% and {placeholder} formats.
+            Method bracket = placeholderApiClass.getMethod("setBracketPlaceholders", Player.class, String.class);
+            output = (String) bracket.invoke(null, player, output);
+
+            Method regular = placeholderApiClass.getMethod("setPlaceholders", Player.class, String.class);
+            output = (String) regular.invoke(null, player, output);
+        } catch (Exception ex) {
+            if (!warnedPapiParsingFailure) {
+                warnedPapiParsingFailure = true;
+                LOG.warning("[BedWars][SidebarFallback] PlaceholderAPI parsing failed: " + ex.getClass().getSimpleName());
+            }
+        }
+        return output;
     }
 }
-

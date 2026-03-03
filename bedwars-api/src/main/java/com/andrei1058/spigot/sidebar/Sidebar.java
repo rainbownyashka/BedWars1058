@@ -5,10 +5,12 @@ import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Score;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 import org.bukkit.scoreboard.NameTagVisibility;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -25,6 +27,14 @@ public class Sidebar {
 
     private static final Logger LOG = Bukkit.getLogger();
     private static final Set<String> WARNED_KEYS = ConcurrentHashMap.newKeySet();
+    private static final ChatColor[] ENTRY_COLORS = ChatColor.values();
+
+    private static boolean numberFormatIntrospected = false;
+    private static boolean numberFormatSupported = false;
+    private static Method scoreNumberFormatMethod;
+    private static Method numberFormatBlankMethod;
+    private static Method numberFormatFixedMethod;
+    private static Method componentTextMethod;
 
     private SidebarLine title;
     private final List<SidebarLine> lines = new ArrayList<>();
@@ -166,16 +176,43 @@ public class Sidebar {
 
     private void rerenderSidebar() {
         if (objective == null || scoreboard == null) return;
+
+        // Clear previous sidebar line teams only. Keep bwtab_* teams for tab formatting.
+        for (Team team : new ArrayList<>(scoreboard.getTeams())) {
+            if (team.getName().startsWith("bwln_")) {
+                team.unregister();
+            }
+        }
+
         for (String entry : new ArrayList<>(scoreboard.getEntries())) {
             scoreboard.resetScores(entry);
         }
+
         int count = Math.min(lines.size(), 15);
         for (int i = 0; i < count; i++) {
             SidebarLine line = lines.get(i);
             tickAnimated(line);
-            String rendered = applyPlaceholders(line.getLine(), placeholders);
-            String entry = uniqueEntry(limit(rendered, 64), i);
-            objective.getScore(entry).setScore(count - i);
+
+            String lineText = applyPlaceholders(line.getLine(), placeholders);
+            String scoreText = "";
+            if (line instanceof ScoredLine) {
+                scoreText = applyPlaceholders(((ScoredLine) line).getScore(), placeholders);
+            }
+
+            String entry = uniqueEntry(i);
+            Team lineTeam = scoreboard.getTeam(sidebarLineTeamName(i));
+            if (lineTeam == null) {
+                lineTeam = scoreboard.registerNewTeam(sidebarLineTeamName(i));
+            }
+
+            splitAndApplyTeamText(lineTeam, lineText);
+            if (!lineTeam.hasEntry(entry)) {
+                lineTeam.addEntry(entry);
+            }
+
+            Score score = objective.getScore(entry);
+            score.setScore(count - i);
+            applyScoreDisplay(score, scoreText);
         }
     }
 
@@ -272,15 +309,70 @@ public class Sidebar {
         }
     }
 
-    private static String uniqueEntry(String base, int index) {
-        String normalized = base == null || base.isEmpty() ? " " : base;
-        String suffix = ChatColor.values()[index % ChatColor.values().length].toString();
-        return limit(normalized + suffix, 64);
+    private static String uniqueEntry(int index) {
+        ChatColor first = ENTRY_COLORS[index % ENTRY_COLORS.length];
+        ChatColor second = ENTRY_COLORS[(index + 8) % ENTRY_COLORS.length];
+        return first.toString() + second;
     }
 
     private static String limit(String s, int maxLen) {
         if (s == null) return "";
         return s.length() > maxLen ? s.substring(0, maxLen) : s;
+    }
+
+    private static String sidebarLineTeamName(int index) {
+        return "bwln_" + index;
+    }
+
+    private static void splitAndApplyTeamText(Team team, String text) {
+        String value = limit(text, 128);
+        String prefix = value;
+        String suffix = "";
+        if (value.length() > 64) {
+            prefix = value.substring(0, 64);
+            suffix = value.substring(64);
+        }
+        setTeamPrefix(team, limit(prefix, 64));
+        setTeamSuffix(team, limit(suffix, 64));
+    }
+
+    private static void applyScoreDisplay(Score score, String scoreText) {
+        if (!ensureNumberFormatSupport()) return;
+
+        try {
+            Object numberFormat;
+            if (scoreText == null || scoreText.isEmpty()) {
+                numberFormat = numberFormatBlankMethod.invoke(null);
+            } else {
+                Object component = componentTextMethod.invoke(null, scoreText);
+                numberFormat = numberFormatFixedMethod.invoke(null, component);
+            }
+            scoreNumberFormatMethod.invoke(score, numberFormat);
+        } catch (Exception ex) {
+            warnOnce("score-number-format", "[BedWars][Sidebar] Could not apply score number format: " + ex.getMessage(), ex);
+        }
+    }
+
+    private static boolean ensureNumberFormatSupport() {
+        if (numberFormatIntrospected) {
+            return numberFormatSupported;
+        }
+        numberFormatIntrospected = true;
+        try {
+            Class<?> scoreClass = Class.forName("org.bukkit.scoreboard.Score");
+            Class<?> numberFormatClass = Class.forName("io.papermc.paper.scoreboard.numbers.NumberFormat");
+            Class<?> componentClass = Class.forName("net.kyori.adventure.text.Component");
+            scoreNumberFormatMethod = scoreClass.getMethod("numberFormat", numberFormatClass);
+            numberFormatBlankMethod = numberFormatClass.getMethod("blank");
+            Class<?> componentLikeClass = Class.forName("net.kyori.adventure.text.ComponentLike");
+            numberFormatFixedMethod = numberFormatClass.getMethod("fixed", componentLikeClass);
+            componentTextMethod = componentClass.getMethod("text", String.class);
+            numberFormatSupported = true;
+        } catch (Exception ignored) {
+            numberFormatSupported = false;
+            warnOnce("score-number-format-unsupported", "[BedWars][Sidebar] Paper number-format API unavailable; using legacy numeric sidebar scores.");
+        }
+        return numberFormatSupported;
     }
 
     private void warnUnsupportedOnce(String key, String message) {
